@@ -13,15 +13,13 @@ from typing import Optional
 from llm_model import get_model
 
 
-
-
 INSTRUCTIONS = dedent(
     """\
-    You are an intelligent SQL assistant with access to a database through the MCP tool.
+    You are an intelligent PostgreSQL assistant with access to a PostgreSQL database through the MCP tool.
 
     Your job is to:
     1. Understand the user's question or request related to data.
-    2. Use the `get_schema` tool to retrieve the structure of the database, if needed.
+    2. Use the `get_schema` tool to retrieve the structure of the PostgreSQL database, if needed.
     3. Generate a valid SQL `SELECT` query using the correct table and column names.
     4. Use the `read_query` tool to run your query and retrieve the results.
     5. Analyze the results and respond with a **clear, natural language summary** of the data.
@@ -31,13 +29,13 @@ INSTRUCTIONS = dedent(
        - Avoid technical jargon or raw data unless specifically requested.
 
     Constraints:
-    - Only use SELECT queries.
+    - Only use SELECT queries for PostgreSQL.
     - Do not perform INSERT, UPDATE, DELETE, or any modification operations.
     - Do not return raw SQL or result tables unless explicitly asked by the user.
     - Always return a human-friendly explanation, even if the result is empty or zero.
 
     Tools you can use:
-    - `get_schema`: Retrieves the full schema of the database.
+    - `get_schema`: Retrieves the full schema of the PostgreSQL database.
     - `read_query`: Executes a SELECT query and returns the result as a list of dictionaries.
 
     Examples of user queries:
@@ -59,18 +57,18 @@ INSTRUCTIONS = dedent(
 load_dotenv()
 MODEL_ID = os.getenv("MODEL_ID")
 if not MODEL_ID:
-        raise ValueError("GROQ_API_KEY environment variable is not set.")
+    raise ValueError("MODEL_ID environment variable is not set.")
 MODEL_API_KEY = os.getenv("MODEL_API_KEY")
 if not MODEL_API_KEY:
-        raise ValueError("MODEL_API_KEY environment variable is not set.")
+    raise ValueError("MODEL_API_KEY environment variable is not set.")
 
 # Default model ID if not specified in environment variables
 DEFAULT_MODEL_ID = "llama-3.3-70b-versatile"
 
 
-async def db_connection_agent(session: ClientSession, model_id: Optional[str] = None) -> Agent:
+async def postgres_connection_agent(session: ClientSession, model_id: Optional[str] = None) -> Agent:
     """
-    Creates and configures an agent that interacts with an SQL database via MCP.
+    Creates and configures an agent that interacts with PostgreSQL database via MCP.
 
     Args:
         session (ClientSession): The MCP client session.
@@ -78,32 +76,25 @@ async def db_connection_agent(session: ClientSession, model_id: Optional[str] = 
 
     Returns:
         Agent: The configured agent.
-
     """
     
     # Initialize the MCP toolkit
     mcp_tools = MCPTools(session=session)
     await mcp_tools.initialize()
     
-    
     # Create and return the configured agent
     return Agent(
-        model=get_model(model_id,MODEL_API_KEY),
+        model=get_model(model_id, MODEL_API_KEY),
         tools=[mcp_tools],
         instructions=INSTRUCTIONS,
         markdown=True,
         show_tool_calls=True,
     )
-    
-   
-   
-    
-    
 
 
-async def run_agent(message: str, model_id: Optional[str] = None) -> RunResponse:
+async def run_postgres_agent(message: str, model_id: Optional[str] = None) -> RunResponse:
     """
-    Runs the agent with the given message and returns the response.
+    Runs the PostgreSQL agent with the given message and returns the response.
 
     Args:
         message (str): The message to send to the agent.
@@ -116,19 +107,25 @@ async def run_agent(message: str, model_id: Optional[str] = None) -> RunResponse
         ValueError: If any of the required database environment variables are not set.
         RuntimeError: If there is an error connecting to the MCP server.
     """
-    # Check for required database environment variables
+    # Check for required PostgreSQL environment variables
     required_vars = ["DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME"]
     missing_vars = [var for var in required_vars if not os.getenv(var)]
     if missing_vars:
         raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
 
-    # Configure MCP server parameters
+    # Build PostgreSQL connection string
+    postgres_uri = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:5432/{os.getenv('DB_NAME')}"
+    
+    # Configure MCP server parameters using Docker
     server_params = StdioServerParameters(
-        command="npx",
+        command="docker",
         args=[
-            "-y",
-            "@modelcontextprotocol/server-postgres",
-            f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:5432/{os.getenv('DB_NAME')}"
+            "run",
+            "-i",
+            "--rm",
+            "--network=host",  # Use host networking to access localhost PostgreSQL
+            "mcp/postgres",
+            postgres_uri
         ],
     )
 
@@ -136,21 +133,73 @@ async def run_agent(message: str, model_id: Optional[str] = None) -> RunResponse
     try:
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
-                agent = await db_connection_agent(session, model_id)
+                agent = await postgres_connection_agent(session, model_id)
                 response = await agent.arun(message)
                 return response
     except Exception as e:
-        raise RuntimeError(f"Error connecting to MCP server or running agent: {e}") from e
+        raise RuntimeError(f"Error connecting to PostgreSQL MCP server or running agent: {e}") from e
+
+
+async def run_postgres_agent_native(message: str, model_id: Optional[str] = None) -> RunResponse:
+    """
+    Runs the PostgreSQL agent using the native npm package instead of Docker.
+
+    Args:
+        message (str): The message to send to the agent.
+        model_id (Optional[str]): The ID of the language model to use. Defaults to DEFAULT_MODEL_ID.
+
+    Returns:
+        RunResponse: The agent's response.
+
+    Raises:
+        ValueError: If any of the required database environment variables are not set.
+        RuntimeError: If there is an error connecting to the MCP server.
+    """
+    # Check for required PostgreSQL environment variables
+    required_vars = ["DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME"]
+    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    if missing_vars:
+        raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+
+    # Build PostgreSQL connection string
+    postgres_uri = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:5432/{os.getenv('DB_NAME')}"
+    
+    # Configure MCP server parameters using npx (native approach)
+    server_params = StdioServerParameters(
+        command="npx",
+        args=[
+            "-y",
+            "@modelcontextprotocol/server-postgres",
+            postgres_uri
+        ],
+    )
+
+    # Connect to the MCP server and run the agent
+    try:
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                agent = await postgres_connection_agent(session, model_id)
+                response = await agent.arun(message)
+                return response
+    except Exception as e:
+        raise RuntimeError(f"Error connecting to PostgreSQL MCP server or running agent: {e}") from e
 
 
 async def main():
     """
-    Example usage of the agent.
+    Example usage of the PostgreSQL agent.
     """
     try:
         # Run the agent with a sample query
-        response = await run_agent("get a list of all employees")
+        logger.info("Testing PostgreSQL agent with native npm approach...")
+        response = await run_postgres_agent_native("List all tables in the database")
         logger.info(f"Agent Response: {response.content}")
+        
+        # Uncomment to test Docker approach
+        # logger.info("Testing PostgreSQL agent with Docker approach...")
+        # response_docker = await run_postgres_agent("List all tables in the database")
+        # logger.info(f"Docker Agent Response: {response_docker.content}")
+        
     except ValueError as ve:
         logger.error(f"Configuration error: {ve}")
     except RuntimeError as re:
@@ -160,4 +209,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main()) 

@@ -25,12 +25,25 @@ This project demonstrates how to build an interactive SQL chatbot and a dynamic 
 *   **MCP SQL Server:** You need an MCP SQL server running. You can set it up using the `uvx` command.
 *   **Database:** An SQL database (e.g., MySQL, PostgreSQL) with some data.
 *   **Environment Variables:** Set the following environment variables in a `.env` file in the project root:
-    *   `GROQ_API_KEY`: Your Groq API key.
+    *   `MODEL_API_KEY`: Your API key for the chosen model provider (Groq, OpenAI, or Gemini).
+    *   `MODEL_ID`: The model id to use (see supported models below).
     *   `DB_HOST`: The hostname or IP address of your database server.
     *   `DB_USER`: The username for your database.
     *   `DB_PASSWORD`: The password for your database.
     *   `DB_NAME`: The name of your database.
-    * `MODEL_ID`: The model id to use. (optional)
+
+### Supported AI Models
+
+*   **Groq Models:**
+    *   `llama-3.3-70b-versatile` (default)
+    *   `mixtral-8x7b-32768`
+*   **OpenAI Models:**
+    *   `gpt-4o`
+    *   `gpt-3.5-turbo`
+*   **Google Gemini Models:**
+    *   `gemini-2.0-flash-exp`
+    *   `gemini-1.5-pro`
+    *   `gemini-1.5-flash`
 
 ## Setup and Installation (using UV)
 
@@ -55,15 +68,18 @@ This project demonstrates how to build an interactive SQL chatbot and a dynamic 
     Create a `.env` file in the project root and add your environment variables:
 
     ```
-    
     DB_HOST=your_db_host
     DB_USER=your_db_user
     DB_PASSWORD=your_db_password
     DB_NAME=your_db_name
-    MODEL_API_KEY = API for OpenAI or GROQ
-    MODEL_ID = The ID of the language model to use like llama-3.3-70b-versatile or gpt-4o
+    MODEL_API_KEY=your_api_key_here
+    MODEL_ID=gemini-2.0-flash-exp
     ```
-    *Note :- Gives better results with OpenAI models
+    
+    **Getting API Keys:**
+    *   **Groq:** Get your free API key from [Groq Console](https://console.groq.com/)
+    *   **OpenAI:** Get your API key from [OpenAI Platform](https://platform.openai.com/)
+    *   **Google Gemini:** Get your API key from [Google AI Studio](https://aistudio.google.com/)
 
 
 ## Running the Application

@@ -1,0 +1,60 @@
+services:
+  # Local PostgreSQL (optional - can be disabled for remote connections)
+  postgres:
+    image: postgres:15
+    container_name: mcp_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-testdb}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-testdb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - local  # Only start this service with 'local' profile
+
+  # Advanced Postgres MCP Pro Server with index tuning and performance analysis
+  postgres-mcp:
+    image: crystaldba/postgres-mcp:latest
+    container_name: mcp_postgres_server
+    restart: unless-stopped
+    environment:
+      # Use environment variables for flexible connection
+      DATABASE_URI: postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT:-5432}/${DB_NAME}
+    ports:
+      - "8000:8000"
+    command: ["--access-mode=unrestricted", "--transport=sse"]
+    # Remove dependency on local postgres for remote connections
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+    # Use network mode for better connectivity to remote hosts
+    # Note: network_mode and networks are mutually exclusive
+    network_mode: ${NETWORK_MODE:-bridge}
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: mcp_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGLADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "${PGADMIN_PORT:-8080}:80"
+    # Remove dependency on postgres for remote setup
+    profiles:
+      - local
+      - remote
+
+volumes:
+  postgres_data: 
